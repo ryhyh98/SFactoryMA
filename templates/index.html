@@ -1,0 +1,266 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트공장 수준 진단</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 20px; background-color: #f4f7f6; color: #333; }
+        #main-container { max-width: 900px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2, h3 { text-align: center; }
+        
+        /* 설문 */
+        .question-group { margin-bottom: 25px; border-left: 3px solid #007bff; padding-left: 15px; }
+        .question-group h3 { color: #0056b3; text-align: left;}
+        .question.locked { opacity: 0.5; pointer-events: none; }
+        .question.locked .options label { cursor: not-allowed; }
+        .options label { display: block; margin-bottom: 8px; background: #f9f9f9; padding: 10px; border-radius: 5px; cursor: pointer; transition: background-color 0.3s; }
+        .options label:hover { background: #e9ecef; }
+        #user-info-form input { padding: 10px; width: 200px; margin: 5px; border: 1px solid #ccc; border-radius: 4px; }
+        #start-survey-btn, #submit-btn { padding: 10px 20px; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        #start-survey-btn { background-color: #007bff; }
+        #submit-btn { display: none; width: 100%; background-color: #28a745; font-size: 18px; margin-top: 20px; }
+        #survey-content { display: none; }
+
+        /* 결과 */
+        #result-container { display: none; }
+        .section-divider { margin-top: 40px; }
+        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; margin-top: 20px; }
+        .result-table, .level-table, .detail-table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
+        .result-table th, .result-table td, .level-table th, .level-table td, .detail-table th, .detail-table td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        .result-table th, .level-table th, .detail-table th { background-color: #f2f2f2; }
+        .result-table .total-row { background-color: #e2f3ff; font-weight: bold; }
+        .detail-table td:nth-child(3) { text-align: left; }
+        .level-box { border: 2px solid #333; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .level-box span { font-size: 1.5em; font-weight: bold; }
+        .level-box .level-text { background-color: #002060; color: white; padding: 10px 20px; }
+        .summary-section { margin-top: 20px; padding: 15px; background-color: #e9f7fd; border-left: 5px solid #007bff; text-align: left;}
+        .button-group { text-align: center; margin-top: 20px; }
+        .button-group button { padding: 10px 20px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; }
+        .pdf-btn { background-color: #dc3545; color: white; }
+        .excel-btn { background-color: #28a745; color: white; }
+        .email-btn { background-color: #ffc107; color: #333; }
+    </style>
+</head>
+<body>
+
+<div id="main-container">
+    <div id="survey-wrapper">
+        <h1>스마트공장 수준 진단</h1>
+        <div id="user-info-form" style="text-align: center; margin-bottom: 30px;">
+            <input type="text" id="userName" placeholder="성명">
+            <input type="text" id="companyName" placeholder="회사명">
+            <input type="email" id="userEmail" placeholder="이메일">
+            <button id="start-survey-btn">설문 시작</button>
+        </div>
+        <div id="survey-content">
+            <form id="survey-form">
+                {% set 대분류 = '' %}
+                {% for question in questions %}
+                    {% set question_index = loop.index %}
+                    {% if 대분류 != question.대분류 %}
+                        {% if not loop.first %}</div>{% endif %}
+                        <div class="question-group">
+                        <h3>{{ question.대분류 }}</h3>
+                        {% set 대분류 = question.대분류 %}
+                    {% endif %}
+                    <div class="question" id="question-{{ loop.index }}">
+                        <p>{{ loop.index }}. {{ question.평가항목 }}</p>
+                        <div class="options">
+                            {% for option in question.options %}
+                            <label>
+                                <input type="radio" name="question{{ question_index }}" value="{{ loop.index0 }}" 
+                                       data-대분류="{{ question.대분류 }}" 
+                                       data-평가항목="{{ question.평가항목 }}"
+                                       data-선택내용="{{ option.text }}"
+                                       data-score1="{{ option.score1 }}" 
+                                       data-score2="{{ option.score2 }}" required>
+                                {{ option.text }}
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+                </div>
+            </form>
+            <button id="submit-btn">결과보기</button>
+        </div>
+    </div>
+
+    <div id="result-container">
+        <!-- 결과 표시 영역은 이전과 동일 -->
+        <h2>스마트공장 수준 진단결과</h2>
+        <div class="result-grid">
+            <div>
+                <table class="result-table" id="summary-table">
+                    <thead><tr><th>영역</th><th>배점</th><th>수준</th><th>점수(점)</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+                <div class="level-box" style="margin-top: 10px;">
+                    <span>스마트공장 수준</span>
+                    <span id="final-level-text" class="level-text"></span>
+                </div>
+            </div>
+            <div>
+                <canvas id="result-chart"></canvas>
+            </div>
+        </div>
+        <div style="margin-top: 20px;">
+             <table class="level-table">
+                <thead><tr><th>수준</th><th colspan="2">점수 구간</th><th colspan="2">수준 구간</th><th>비고</th></tr></thead>
+                <tbody>
+                    <tr><td></td><td>이상</td><td>미만</td><td>이상</td><td>미만</td><td></td></tr>
+                    <tr><td>Level 0</td><td></td><td>550</td><td></td><td>0.5</td><td></td></tr>
+                    <tr><td>Level 1</td><td>550</td><td>650</td><td>0.5</td><td>1.5</td><td>확인서</td></tr>
+                    <tr><td>Level 2</td><td>650</td><td>750</td><td>1.5</td><td>2.5</td><td>확인서</td></tr>
+                    <tr><td>Level 3</td><td>750</td><td>850</td><td>2.5</td><td>3.5</td><td>확인서</td></tr>
+                    <tr><td>Level 4</td><td>850</td><td>950</td><td>3.5</td><td>4.5</td><td>확인서</td></tr>
+                    <tr><td>Level 5</td><td>950</td><td>1,000</td><td>4.5</td><td>5.0</td><td>확인서</td></tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section-divider">
+            <h3>상세 결과</h3>
+            <table class="detail-table" id="detail-table">
+                <thead><tr><th>대분류</th><th>평가항목</th><th>선택내용</th><th>점수</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="section-divider">
+            <h3>종합 분석 요약</h3>
+            <div class="summary-section" id="total-summary"></div>
+            <div id="category-summary-container"></div>
+        </div>
+
+        <div class="button-group">
+            <button class="pdf-btn">PDF로 저장</button>
+            <button class="excel-btn">Excel로 저장</button>
+            <button class="email-btn">이메일로 결과 발송</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const startSurveyBtn = document.getElementById('start-survey-btn');
+        const surveyContent = document.getElementById('survey-content');
+        const form = document.getElementById('survey-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const allQuestions = document.querySelectorAll('.question');
+        const totalQuestions = allQuestions.length;
+
+        // 설문 시작 로직
+        startSurveyBtn.addEventListener('click', () => {
+            if (document.getElementById('userName').value && document.getElementById('companyName').value && document.getElementById('userEmail').value) {
+                document.getElementById('user-info-form').style.display = 'none';
+                surveyContent.style.display = 'block';
+                
+                // 첫 문항 빼고 모두 잠금
+                allQuestions.forEach((question, index) => {
+                    if (index > 0) {
+                        question.classList.add('locked');
+                    }
+                });
+            } else {
+                alert('성명, 회사명, 이메일을 모두 입력해주세요.');
+            }
+        });
+
+        // 문항 선택 시 다음 문항 잠금 해제 로직
+        form.addEventListener('change', (event) => {
+            const currentQuestion = event.target.closest('.question');
+            if (!currentQuestion) return;
+
+            const questionId = parseInt(currentQuestion.id.split('-')[1]);
+            const nextQuestion = document.getElementById(`question-${questionId + 1}`);
+
+            if (nextQuestion) {
+                nextQuestion.classList.remove('locked');
+            }
+
+            // 모든 문항 답변 시 결과보기 버튼 표시
+            const answeredQuestions = document.querySelectorAll('input[type="radio"]:checked').length;
+            if (answeredQuestions === totalQuestions) {
+                submitBtn.style.display = 'block';
+            }
+        });
+
+        // 제출 및 결과 표시 로직
+        submitBtn.addEventListener('click', () => {
+            const answers = Array.from(document.querySelectorAll('input[type="radio"]:checked')).map(input => ({
+                대분류: input.dataset.대분류,
+                평가항목: input.dataset.평가항목,
+                선택내용: input.dataset.선택내용,
+                score1: parseInt(input.dataset.score1),
+                score2: parseInt(input.dataset.score2)
+            }));
+            const surveyorInfo = {
+                name: document.getElementById('userName').value,
+                company: document.getElementById('companyName').value,
+                email: document.getElementById('userEmail').value
+            };
+
+            fetch('/submit', { 
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ answers, surveyorInfo })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('survey-wrapper').style.display = 'none';
+                document.getElementById('result-container').style.display = 'block';
+
+                // (결과 표시 로직은 이전과 동일)
+                const summaryTableBody = document.getElementById('summary-table').getElementsByTagName('tbody')[0];
+                const summaryData = data.summary_table;
+                const labels = Object.keys(summaryData);
+                const chartData = labels.map(key => summaryData[key]['수준']);
+                labels.forEach(key => {
+                    let row = summaryTableBody.insertRow();
+                    row.insertCell().textContent = key;
+                    row.insertCell().textContent = summaryData[key]['배점'];
+                    row.insertCell().textContent = summaryData[key]['수준'];
+                    row.insertCell().textContent = summaryData[key]['점수'];
+                });
+                let totalRow = summaryTableBody.insertRow();
+                totalRow.className = 'total-row';
+                totalRow.insertCell().textContent = '합계';
+                totalRow.insertCell().textContent = data.totals.배점;
+                totalRow.insertCell().textContent = data.totals.수준;
+                totalRow.insertCell().textContent = data.totals.점수;
+                document.getElementById('final-level-text').textContent = data.final_level;
+                const ctx = document.getElementById('result-chart').getContext('2d');
+                labels.push('합계');
+                chartData.push(data.totals.수준);
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: labels, datasets: [{ label: '수준', data: chartData, backgroundColor: chartData.map((_, i) => i === chartData.length - 1 ? '#dc3545' : '#003f5c'), barPercentage: 0.5 }] },
+                    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 5 } } }
+                });
+                const detailTableBody = document.getElementById('detail-table').getElementsByTagName('tbody')[0];
+                data.detailed_results.forEach(res => {
+                    let row = detailTableBody.insertRow();
+                    row.insertCell().textContent = res.대분류;
+                    row.insertCell().textContent = res.평가항목;
+                    row.insertCell().textContent = res.선택내용;
+                    row.insertCell().textContent = res.score2;
+                });
+                document.getElementById('total-summary').innerHTML = `<h4>전체 평가</h4><p>${data.summary_text.total_evaluation}</p>`;
+                const categoryContainer = document.getElementById('category-summary-container');
+                for (const [key, value] of Object.entries(data.summary_text.category_summary)) {
+                    const div = document.createElement('div');
+                    div.className = 'summary-section';
+                    div.innerHTML = `<h4>${key}</h4><p>${value}</p>`;
+                    categoryContainer.appendChild(div);
+                }
+            });
+        });
+    });
+</script>
+
+</body>
+</html>
